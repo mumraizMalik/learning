@@ -1,7 +1,9 @@
 module.exports = {
+  // HOST: "34.143.170.195",
   HOST: "localhost",
+  // USER: "root1",
   USER: "root",
-  PASSWORD: "",
+  PASSWORD: "root",
   DB: "node_sequelize",
   dialect: "mysql",
 
