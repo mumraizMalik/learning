@@ -9,7 +9,7 @@ const upload = async (req, res) => {
     const dataInJSON = csvToJson({
       filePath: `./uploads/${req.file.originalname}`,
     });
-    console.log("dataInJSON", dataInJSON);
+    // console.log("dataInJSON", dataInJSON);
     createProducts(dataInJSON);
 
     res.send("File uploaded successfully!");

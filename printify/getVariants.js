@@ -1,5 +1,7 @@
 const axios = require("axios");
-const getVariants = async (printprovidersIds, colors) => {
+const getVariants = async (printprovidersIds, darkColors, lightColors) => {
+  console.log("darkColors", darkColors);
+  console.log("lightColors", lightColors);
   if (printprovidersIds.length < 1) return null;
 
   const finalArray = [];
@@ -15,12 +17,26 @@ const getVariants = async (printprovidersIds, colors) => {
           }
         );
 
-        let requiredVariants = response.data.variants.filter(function (
+        let requiredVariants1 = response.data.variants.filter(function (
           currentVariants
         ) {
-          return !colors.includes(currentVariants);
+          return darkColors.includes(
+            currentVariants?.options?.color.toLowerCase()
+          );
         });
-        res({ variants: requiredVariants, ...item });
+        let requiredVariants2 = response.data.variants.filter(function (
+          currentVariants
+        ) {
+          return lightColors.includes(
+            currentVariants?.options?.color.toLowerCase()
+          );
+        });
+
+        res({
+          variants1: requiredVariants1,
+          variants2: requiredVariants2,
+          ...item,
+        });
       } catch {}
     });
   });

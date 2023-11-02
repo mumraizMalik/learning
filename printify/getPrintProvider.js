@@ -20,8 +20,6 @@ const getPrintProvider = async (blueprintId, print_providers) => {
       }
     });
 
-    console.log(response.data);
-    console.log(printprovidersIds);
     return printprovidersIds;
   } catch {}
 };
