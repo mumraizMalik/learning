@@ -42,21 +42,35 @@ const getPrintProvider = require("../printify/getPrintProvider");
 const getVariants = require("../printify/getVariants");
 const uploadImage = require("../printify/uploadImage");
 const productPublishApi = require("../services/publishProduct");
+const createCsvWriter = require("csv-writer").createObjectCsvWriter;
 const createProducts = async (arr) => {
   let arrayOfFailedProducts = [];
 
   // await arr.map(async (arr[i], i) =>
+  const sizesArray = (size) => {
+    try {
+      let Sizes1 = ["6M", "12M", "18M", "24M"];
+      let Sizes2 = ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"];
 
+      const sizes = size.toUpperCase().split("-");
+      let checkArray = Sizes1.includes(sizes[0])
+        ? Sizes1.splice(Sizes1.indexOf(sizes[0]), Sizes1.indexOf(sizes[1]) + 1)
+        : Sizes2.splice(Sizes2.indexOf(sizes[0]), Sizes2.indexOf(sizes[1]) + 1);
+
+      return checkArray;
+    } catch {
+      console.log("checkArrayCatch");
+      return [];
+    }
+  };
   for (let i = 0; i < arr.length; i++) {
-    const colors = [
-      ...arr[i].darkColors.split(","),
-      ...arr[i].lightColors.split(","),
-    ];
+    let newSize = [];
+
     const product = {
       blueprintId: arr[i].blueprintId * 1,
       printProviders: arr[i]["Print Provider"].split(","),
-      colors: colors,
-      printArea: arr[i]["Print area"].split(","),
+      // colors: colors,
+      // printArea: arr[i]["Print area"].split(","),
       url: arr[i]["Image url"],
       title: arr[i].title,
       description: arr[i].description,
@@ -70,17 +84,50 @@ const createProducts = async (arr) => {
       backImageIdLight: arr[i].backImageIdLight ?? null,
       lightColors: arr[i]?.lightColors.split(","),
       darkColors: arr[i]?.darkColors.split(","),
+      sizes: sizesArray(arr[i].Sizes),
     };
-    // const imageResponse = await uploadImage(product.url + i, product.url);
-    // if (imageResponse?.id) {
-    //   console.log(imageResponse);
-    // } else {
-    //   arrayOfFailedProducts.push({ ...arr[i], ...imageResponse.errors });
-    //   console.log("ImageUploadFailed=========?", imageResponse.errors.reason);
-    //   continue;
-    //   // return;
-    // }
-
+    let imagesUrl = [
+      product?.ImageId,
+      product?.backImageId,
+      product?.lightImage,
+      product?.backImageIdLight,
+    ];
+    const promises = [];
+    for (let i = 0; i < 4; i++) {
+      if (imagesUrl[i]) {
+        const imageResponse = await uploadImage(imagesUrl[i], imagesUrl[i]);
+        promises.push(imageResponse);
+        // if (imageResponse?.id) {
+        //   console.log(imageResponse);
+        // } else {
+        //   arrayOfFailedProducts.push({ ...arr[i], ...imageResponse.errors });
+        //   console.log(
+        //     "ImageUploadFailed=========?",
+        //     imageResponse.errors.reason
+        //   );
+        //   continue;
+        //   // return;
+        // }
+      }
+    }
+    Promise.all(promises)
+      .then((results) => {
+        console.log("Result");
+        for (let k = 0; k < results.length; k++) {
+          if (product.imageId == results[k].name)
+            product.imageId = results[k].id;
+          else if (product.backImageId == results[k].name)
+            product.imageId = results[k].id;
+          else if (product.lightImage == results[k].name)
+            product.imageId = results[k].id;
+          else if (product.backImageIdLight == results[k].name)
+            product.imageId = results[k].id;
+        }
+      })
+      .catch((imageResponse) => {
+        console.log("ImagesCatch", imageResponse);
+        arrayOfFailedProducts.push({ ...arr[i], ...imageResponse.errors });
+      });
     const printprovidersIds = await getPrintProvider(
       product.blueprintId,
       product.printProviders
@@ -88,10 +135,11 @@ const createProducts = async (arr) => {
     const variants = await getVariants(
       printprovidersIds,
       product.darkColors,
-      product.lightColors
+      product.lightColors,
+      product.sizes,
+      product.price
     );
-
-    const waitComplete = variants.map(async (item) => {
+    for (j = 0; j < variants.length; j++) {
       let print_areas = [
         {
           variant_ids: [],
@@ -123,16 +171,16 @@ const createProducts = async (arr) => {
           ],
         },
       ];
-      let variant_ids1 = item.variants1.map((obj) => obj.id);
-      item.variants1 = item.variants1.map((item) => ({
-        ...item,
-        price: product.price,
-      }));
-      let variant_ids2 = item.variants2.map((obj) => obj.id);
-      item.variants2 = item?.variants2.map((item) => ({
-        ...item,
-        price: product.price,
-      }));
+      let variant_ids1 = variants[j].variants1.map((obj) => obj.id);
+      // variants[j].variants1 = variants[j].variants1.map((item) => ({
+      //   ...item,
+      //   price: product.price,
+      // }));
+      let variant_ids2 = variants[j].variants2.map((obj) => obj.id);
+      // variants[j].variants2 = variants[j]?.variants2.map((item) => ({
+      //   ...item,
+      //   price: product.price,
+      // }));
 
       let newPrintArea = await updatedPrintArea(
         print_areas,
@@ -141,28 +189,83 @@ const createProducts = async (arr) => {
         (variant_ids2 = variant_ids2.length > 0 ? variant_ids2 : null),
         (loop = variant_ids2?.length > 0 ? 2 : 1)
       );
-      // console.log("-----newPrintArea", newPrintArea);
+
       let updatedProduct = {
-        blueprint_id: item.blueprintId,
-        print_provider_id: item.printProviderId,
+        blueprint_id: variants[j].blueprintId,
+        print_provider_id: variants[j].printProviderId,
         title: product.title,
         description: product.description,
         tags: product.tags,
         print_areas: newPrintArea,
-        variants: [...item.variants1, ...item.variants2],
+        variants: [...variants[j].variants1, ...variants[j].variants2],
       };
-
       try {
         const response = await productPublishApi(updatedProduct);
         // console.log(response.data);
         console.log("......");
       } catch (e) {
-        console.log("===Error===>", e.response.data);
-        arrayOfFailedProducts.push({ ...arr[i], ...e.response.data });
+        // console.log("===Error===>", e.response.data);
+        if (arrayOfFailedProducts.length > 0) {
+          if (
+            !arrayOfFailedProducts.some(
+              (obj) => obj.blueprintId == arr[i].blueprintId
+            )
+          ) {
+            arrayOfFailedProducts.push({
+              ...arr[i],
+              reason: e.response.data?.errors?.reason,
+            });
+          } else console.log();
+        } else
+          arrayOfFailedProducts.push({
+            ...arr[i],
+            reason: e.response.data?.errors?.reason,
+          });
       }
-    });
+    }
   }
-  console.log("ArrayFailedProducts", arrayOfFailedProducts.length);
+  const csvWriter = createCsvWriter({
+    path: "Files/failProducts.csv",
+    header: [
+      { id: "blueprintId", name: "blueprintId" },
+      { id: "Print Provider", name: "Print Provider" },
+      { id: "reason", name: "reason" },
+      // { id: "darkColors", name: "darkColors" },
+      // { id: "Sizes", name: "Sizes" },
+      // { id: "End Price // Profit", name: "End Price // Profit" },
+      // id:title: "Cropped T-Shirt",
+      // id:description: "Cropped T-Shirt",
+      // id:Tags: "group-100",
+      // id:lightColors: "white,pink candy",
+      // id:lightImage: "65293b09848e0656bfc745b8",
+      // id:scale: "0.5",
+      // id:topPercentage: "0",
+      // id:imageId: "6529376ccbd0883f4b21ce12Q",
+      // id:backImageId: "",
+      // id:backImageIdLight: undefined,
+      // id:status: "error",
+      // code: 8253,
+      // message: "Operation failed.",
+      // errors: { reason: "Provided images do not exist", code: 8253 },
+    ],
+  });
+  const response = await csvWriter
+    .writeRecords(arrayOfFailedProducts) // returns a promise
+    .then(() => {
+      return true;
+    })
+    .catch((e) => {
+      return false;
+    });
+  if (arrayOfFailedProducts.length == 0) {
+    return "Success";
+  } else if (response) {
+    return "file";
+  } else {
+    return "failed";
+  }
+
+  // console.log("ArrayFailedProducts", arrayOfFailedProducts);
 };
 
 const calculatePercentage = (percentage) => {
@@ -189,7 +292,6 @@ const updatedPrintArea = (
 ) => {
   const newPrintArea = JSON.parse(JSON.stringify(print_areas));
   if (loop == 2) {
-    console.log("variants2.length", variant_ids2.length);
     newPrintArea.push(print_areas[0]);
   }
   for (let i = 0; i < loop; i++) {
@@ -208,7 +310,7 @@ const updatedPrintArea = (
       }
     } else if (i == 1) {
       newPrintArea[i].variant_ids = variant_ids2;
-      newPrintArea[i].placeholders[0].images[0].id = product.lightImage;
+      newPrintArea[i].placeholders[0].images[0].id = product?.lightImage;
       if (product?.backImageIdLight) {
         newPrintArea[i].placeholders[1].images[0].x = product.percentage;
         newPrintArea[i].placeholders[1].images[0].scale = product.scale;
@@ -218,6 +320,9 @@ const updatedPrintArea = (
       }
     }
   }
+
+  // console.log("newPrintArea", JSON.stringify(newPrintArea));
   return newPrintArea;
 };
+const uploadImages = () => {};
 module.exports = createProducts;
